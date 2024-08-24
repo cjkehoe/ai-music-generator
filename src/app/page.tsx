@@ -1,27 +1,34 @@
-// src/app/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { PromptInput } from '../components/PromptInput'
 import { GenerateButton } from '../components/GenerateButton'
-import { Toggle } from '../components/Toggle'
-import { Music, Image, Play } from 'react-feather'
+import { PlayerControls } from '../components/PlayerControls'
+import { GeneratedSong, storeSong, getSongs, deleteSong } from '../utils'
 import axios from 'axios'
+import { v4 as uuidv4 } from 'uuid'
 
 export default function Home() {
   const [musicPrompt, setMusicPrompt] = useState('')
-  const [useCustomAlbumPrompt, setUseCustomAlbumPrompt] = useState(false)
-  const [albumPrompt, setAlbumPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const [audioUrl, setAudioUrl] = useState('')
+  const [currentSong, setCurrentSong] = useState<GeneratedSong | null>(null)
+  const [storedSongs, setStoredSongs] = useState<GeneratedSong[]>([])
   const [error, setError] = useState('')
-  const [albumCoverUrl, setAlbumCoverUrl] = useState('');
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [volume, setVolume] = useState(1)
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    setStoredSongs(getSongs());
+  }, []);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
     setError('');
-    setAudioUrl('');
-    setAlbumCoverUrl('');
+    setCurrentSong(null);
 
     try {
       const response = await axios.post('/api/generate', {
@@ -34,9 +41,16 @@ export default function Home() {
       if (tracks && tracks.length > 0) {
         const firstTrack = tracks[0];
         if (firstTrack.audio_url) {
-          setAudioUrl(firstTrack.audio_url);
-          // Set the album cover URL
-          setAlbumCoverUrl(firstTrack.image_url);
+          const newSong: GeneratedSong = {
+            id: uuidv4(),
+            prompt: musicPrompt,
+            audioUrl: firstTrack.audio_url,
+            albumCoverUrl: firstTrack.image_url,
+            createdAt: Date.now(),
+          };
+          setCurrentSong(newSong);
+          storeSong(newSong);
+          setStoredSongs(getSongs());
         } else {
           setError('Music generation succeeded, but no audio URL was provided.');
         }
@@ -51,99 +65,159 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    if (currentSong) {
+      audioRef.current = new Audio(currentSong.audioUrl);
+      audioRef.current.addEventListener('loadedmetadata', () => {
+        setDuration(audioRef.current!.duration);
+      });
+      audioRef.current.addEventListener('timeupdate', () => {
+        setCurrentTime(audioRef.current!.currentTime);
+      });
+      audioRef.current.addEventListener('ended', () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      });
+      audioRef.current.volume = volume;
+      return () => {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        }
+      };
+    }
+  }, [currentSong]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
+  const togglePlayPause = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleSeek = (newTime: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleDeleteSong = (id: string) => {
+    deleteSong(id);
+    setStoredSongs(getSongs());
+    if (currentSong && currentSong.id === id) {
+      setCurrentSong(null);
+      setIsPlaying(false);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    }
+  };
+
+  const handleVolumeChange = (newVolume: number) => {
+    setVolume(newVolume);
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume;
+    }
+  };
+
   return (
-    <div className="space-y-8 animate-fadeIn">
-      <h1 className="text-5xl font-bold text-primary-500 dark:text-primary-400 text-center mb-6">Create AI-Generated Music</h1>
+    <div className="space-y-8 pb-24">
+      <h1 className="text-3xl font-bold text-spotify-white">Create AI-Generated Music</h1>
 
-      <div className="bg-white dark:bg-dark-300 rounded-lg shadow-lg p-6 space-y-6 transition-all duration-300 hover:shadow-xl">
-        <div className="flex items-start space-x-2">
-          <Music className="text-primary-500 mt-8 flex-shrink-0" />
-          <div className="flex-grow">
-            <PromptInput
-              label="Enter your music prompt"
-              value={musicPrompt}
-              onChange={setMusicPrompt}
-              placeholder="E.g., An upbeat jazz melody with piano and saxophone"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Use custom album cover prompt</span>
-          <Toggle enabled={useCustomAlbumPrompt} setEnabled={setUseCustomAlbumPrompt} />
-        </div>
-
-        {useCustomAlbumPrompt && (
-          <div className="flex items-start space-x-2 animate-fadeIn">
-            <Image className="text-primary-500 mt-8 flex-shrink-0" />
-            <div className="flex-grow">
-              <PromptInput
-                label="Enter your album cover prompt"
-                value={albumPrompt}
-                onChange={setAlbumPrompt}
-                placeholder="E.g., A vibrant cityscape with jazz instruments floating in the sky"
-              />
-            </div>
-          </div>
-        )}
-
+      <div className="bg-spotify-lightBlack rounded-lg p-6 space-y-6">
+        <PromptInput
+          value={musicPrompt}
+          onChange={setMusicPrompt}
+          placeholder="E.g., An upbeat jazz melody with piano and saxophone"
+        />
         <GenerateButton onClick={handleGenerate} isGenerating={isGenerating} />
-
-        {error && (
-          <div className="text-red-500 text-center">{error}</div>
-        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Audio player */}
-        <div className="bg-white dark:bg-dark-300 p-6 rounded-lg shadow-lg transition-all duration-300 hover:shadow-xl">
-          <h2 className="text-2xl font-semibold mb-4 text-primary-600 dark:text-primary-400 flex items-center">
-            <Play className="mr-2" />
-            Audio Player
-          </h2>
-          {audioUrl ? (
-            <div>
-              <p>Audio URL: {audioUrl}</p>
-              <audio controls className="w-full">
-                <source src={audioUrl} type="audio/mpeg" />
-                Your browser does not support the audio element.
-              </audio>
-            </div>
-          ) : (
-            <div className="bg-gray-200 dark:bg-dark-400 h-24 rounded flex items-center justify-center">
-              <p className="text-gray-500 dark:text-gray-400 italic">Generate music to play</p>
-            </div>
-          )}
-        </div>
+      {error && (
+        <div className="text-red-500 text-center">{error}</div>
+      )}
 
-        {/* Visualization area */}
-        <div className="bg-white dark:bg-dark-300 p-6 rounded-lg shadow-lg transition-all duration-300 hover:shadow-xl">
-          <h2 className="text-2xl font-semibold mb-4 text-primary-600 dark:text-primary-400 flex items-center">
-            <Music className="mr-2" />
-            Visualization
-          </h2>
-          <div className="bg-gray-200 dark:bg-dark-400 h-48 rounded flex items-center justify-center">
-            <p className="text-gray-500 dark:text-gray-400 italic">Music visualization will appear here</p>
+      {currentSong && (
+        <div className="bg-spotify-lightBlack rounded-lg p-6">
+          <div className="flex items-center space-x-4 mb-4">
+            {currentSong.albumCoverUrl && (
+              <img src={currentSong.albumCoverUrl} alt="Album Cover" className="w-16 h-16 object-cover rounded" />
+            )}
+            <div>
+              <h2 className="text-xl font-semibold text-spotify-white">{currentSong.prompt}</h2>
+              <p className="text-spotify-darkGray">AI Music Generator</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-spotify-darkGray">{formatTime(currentTime)}</span>
+            <div className="flex-grow mx-4 h-1 bg-spotify-darkGray rounded-full">
+              <div
+                className="h-1 bg-spotify-green rounded-full"
+                style={{ width: `${(currentTime / duration) * 100}%` }}
+              ></div>
+            </div>
+            <span className="text-xs text-spotify-darkGray">{formatTime(duration)}</span>
           </div>
         </div>
+      )}
 
-        {/* Album cover */}
-        <div className="md:col-span-2 bg-white dark:bg-dark-300 p-6 rounded-lg shadow-lg transition-all duration-300 hover:shadow-xl">
-          <h2 className="text-2xl font-semibold mb-4 text-primary-600 dark:text-primary-400 flex items-center">
-            <Image className="mr-2" />
-            Album Cover
-          </h2>
-          {albumCoverUrl ? (
-            <img src={albumCoverUrl} alt="Generated Album Cover" className="w-full h-64 object-cover rounded" />
-          ) : (
-            <div className="bg-gray-200 dark:bg-dark-400 h-64 rounded flex items-center justify-center">
-              <p className="text-gray-500 dark:text-gray-400 italic">
-                {isGenerating ? "Generating album cover..." : "Generate music to create an album cover"}
-              </p>
+      <div className="bg-spotify-lightBlack rounded-lg p-6">
+        <h2 className="text-2xl font-bold text-spotify-white mb-4">Your Generated Songs</h2>
+        {storedSongs.map((song) => (
+          <div key={song.id} className="flex items-center justify-between py-2 border-b border-spotify-darkGray last:border-b-0">
+            <div className="flex items-center space-x-4">
+              <img src={song.albumCoverUrl} alt="Album Cover" className="w-12 h-12 object-cover rounded" />
+              <div>
+                <h3 className="text-spotify-white font-semibold">{song.prompt}</h3>
+                <p className="text-spotify-darkGray text-sm">{new Date(song.createdAt).toLocaleString()}</p>
+              </div>
             </div>
-          )}
-        </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentSong(song)}
+                className="text-spotify-green hover:text-spotify-white transition"
+              >
+                Play
+              </button>
+              <button
+                onClick={() => handleDeleteSong(song.id)}
+                className="text-spotify-darkGray hover:text-spotify-white transition"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
+
+      <PlayerControls
+        currentSong={currentSong}
+        isPlaying={isPlaying}
+        onPlayPause={togglePlayPause}
+        currentTime={currentTime}
+        duration={duration}
+        onSeek={handleSeek}
+        volume={volume}
+        onVolumeChange={handleVolumeChange}
+      />
     </div>
   )
 }

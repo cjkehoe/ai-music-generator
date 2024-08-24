@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { Home, Headphones } from 'react-feather';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,20 +17,33 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-200 dark:to-dark-300 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col`}>
-        <header className="bg-primary-700 dark:bg-dark-300 text-white py-4">
-          <div className="max-w-5xl mx-auto px-4">
-            <h1 className="text-2xl font-bold">AI Music Generator</h1>
+      <body className={`${inter.className} bg-spotify-black text-spotify-white min-h-screen flex`}>
+        <aside className="w-60 bg-spotify-black flex flex-col">
+          <div className="p-6">
+            <h1 className="text-2xl font-bold text-spotify-white mb-8">AI Music Generator</h1>
+            <nav>
+              <ul className="space-y-4">
+                <li>
+                  <a href="#" className="flex items-center text-spotify-white hover:text-spotify-green">
+                    <Home className="mr-4" size={24} />
+                    Home
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="flex items-center text-spotify-white hover:text-spotify-green">
+                    <Headphones className="mr-4" size={24} />
+                    Your Library
+                  </a>
+                </li>
+              </ul>
+            </nav>
           </div>
-        </header>
-        <main className="flex-grow container max-w-5xl mx-auto px-4 py-8">
-          {children}
+        </aside>
+        <main className="flex-grow bg-gradient-to-b from-spotify-lightBlack to-spotify-black overflow-y-auto">
+          <div className="max-w-5xl mx-auto px-8 py-6">
+            {children}
+          </div>
         </main>
-        <footer className="bg-primary-700 dark:bg-dark-300 text-white py-4">
-          <div className="max-w-5xl mx-auto px-4 text-center">
-            © 2024 AI Music Generator
-          </div>
-        </footer>
       </body>
     </html>
   );
